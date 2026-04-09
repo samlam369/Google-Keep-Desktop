@@ -121,9 +121,7 @@ function updateTrayMenu() {
   if (!tray) return;
   const contextMenu = electron.Menu.buildFromTemplate([
     {
-      label: 'Show Window',
-      type: 'checkbox',
-      checked: mainWindow && mainWindow.isVisible(),
+      label: mainWindow && mainWindow.isVisible() ? 'Hide Window' : 'Show Window',
       click: () => {
         if (mainWindow.isVisible()) {
           mainWindow.hide();
