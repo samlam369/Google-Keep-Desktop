@@ -87,33 +87,25 @@ function getIconPath() {
   return undefined; // fallback to Electron default
 }
 
+function toggleWindow() {
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  updateTrayMenu();
+}
+
 function createTray() {
   const icon = getIconPath();
   tray = new electron.Tray(icon || undefined);
   tray.setToolTip('Google Keep Memo Pad');
 
-  tray.on('double-click', () => {
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-    updateTrayMenu();
-  });
-
   tray.on('click', () => {
-    // Left click: toggle window
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-    updateTrayMenu();
+    toggleWindow();
   });
 
-  // No need for explicit right-click handler; setContextMenu handles it
   updateTrayMenu();
 }
 
@@ -121,15 +113,9 @@ function updateTrayMenu() {
   if (!tray) return;
   const contextMenu = electron.Menu.buildFromTemplate([
     {
-      label: mainWindow && mainWindow.isVisible() ? 'Hide Window' : 'Show Window',
+      label: mainWindow && mainWindow.isVisible() ? 'Hide Memo' : 'Show Memo',
       click: () => {
-        if (mainWindow.isVisible()) {
-          mainWindow.hide();
-        } else {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-        updateTrayMenu();
+        toggleWindow();
       },
     },
     {
