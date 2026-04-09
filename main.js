@@ -12,6 +12,8 @@ let mainWindow;
 let tray;
 let alwaysOnTop = store.get('alwaysOnTop', false); // Persisted always-on-top state
 let showTitleBar = store.get('showTitleBar', true); // Persisted show-title-bar state, enabled by default
+let stayHidden = false; // Flag to prevent auto re-show
+let reShowTimeoutId = null; // Track the current re-show timer
 let extensions;
 
 const DEFAULT_WINDOW_WIDTH = 300;
@@ -70,6 +72,7 @@ function createWindow() {
     if (!electron.app.isQuiting) {
       e.preventDefault();
       mainWindow.hide();
+      startReShowTimer();
     }
     return false;
   });
@@ -87,12 +90,36 @@ function getIconPath() {
   return undefined; // fallback to Electron default
 }
 
+function startReShowTimer() {
+  if (reShowTimeoutId) clearTimeout(reShowTimeoutId);
+  
+  const timerMinutes = store.get('reShowTimer', 15);
+  console.log(`Scheduling re-show in ${timerMinutes} minutes`);
+  
+  reShowTimeoutId = setTimeout(() => {
+    if (stayHidden) {
+      console.log('Stay Hidden is enabled, looping timer...');
+      startReShowTimer();
+    } else {
+      console.log('Re-showing hidden memo...');
+      if (mainWindow) {
+        mainWindow.showInactive();
+      }
+      reShowTimeoutId = null;
+    }
+  }, timerMinutes * 60 * 1000);
+}
+
 function toggleWindow() {
   if (mainWindow.isVisible()) {
     mainWindow.hide();
+    startReShowTimer();
   } else {
-    mainWindow.show();
-    mainWindow.focus();
+    mainWindow.showInactive();
+    if (reShowTimeoutId) {
+      clearTimeout(reShowTimeoutId);
+      reShowTimeoutId = null;
+    }
   }
   updateTrayMenu();
 }
@@ -111,13 +138,23 @@ function createTray() {
 
 function updateTrayMenu() {
   if (!tray) return;
+  const isVisible = mainWindow && mainWindow.isVisible();
   const contextMenu = electron.Menu.buildFromTemplate([
     {
-      label: mainWindow && mainWindow.isVisible() ? 'Hide Memo' : 'Show Memo',
+      label: isVisible ? 'Hide Memo' : 'Show Memo',
       click: () => {
         toggleWindow();
       },
     },
+    ...(!isVisible ? [{
+      label: 'Stay Hidden',
+      type: 'checkbox',
+      checked: stayHidden,
+      click: () => {
+        stayHidden = !stayHidden;
+        updateTrayMenu();
+      },
+    }] : []),
     {
       label: 'Always on Top',
       type: 'checkbox',
@@ -143,13 +180,13 @@ function updateTrayMenu() {
           mainWindow = null; // Clear reference to old window
           createWindow();
           mainWindow.setBounds(currentBounds);
-          mainWindow.show();
+            mainWindow.showInactive();
         }
         updateTrayMenu();
       },
     },
     {
-      label: 'Set Default Note URL',
+      label: 'Settings',
       click: async () => {
         try {
           // Get the current URL from the store
@@ -162,7 +199,7 @@ function updateTrayMenu() {
             parent: mainWindow,
             modal: true,
             width: 500,
-            height: 200,
+            height: 260,
             minimizable: false,
             maximizable: false,
             resizable: false,
@@ -172,7 +209,7 @@ function updateTrayMenu() {
               preload: path.join(__dirname, 'url-dialog-preload.js')
             },
             autoHideMenuBar: true,
-            title: 'Set Default Note URL',
+            title: 'Settings',
           });
           
           // Create HTML content for the input dialog
@@ -180,20 +217,27 @@ function updateTrayMenu() {
             <!DOCTYPE html>
             <html>
             <head>
-              <title>Set Default Note URL</title>
+              <title>Settings</title>
               <style>
                 body {
                   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                  margin: 20px 32px 20px 20px; /* More right margin */
+                  margin: 0;
+                  padding: 20px;
                   color: #333;
                   display: flex;
                   flex-direction: column;
-                  height: calc(100vh - 40px);
+                  justify-content: center;
+                  height: 100vh;
+                  box-sizing: border-box;
                 }
                 .container {
                   display: flex;
                   flex-direction: column;
-                  flex: 1;
+                  gap: 16px;
+                }
+                .setting-group {
+                  display: flex;
+                  flex-direction: column;
                 }
                 label {
                   margin-bottom: 8px;
@@ -201,17 +245,16 @@ function updateTrayMenu() {
                 }
                 input {
                   padding: 8px;
-                  margin-bottom: 8px; /* Reduced gap below input */
                   border: 1px solid #ccc;
                   border-radius: 4px;
                   font-size: 14px;
                   width: 100%;
+                  box-sizing: border-box;
                 }
                 .button-row {
                   display: flex;
                   justify-content: space-between;
                   align-items: center;
-                  margin-top: 16px;
                   gap: 10px;
                 }
                 .button-row button {
@@ -219,19 +262,8 @@ function updateTrayMenu() {
                 }
                 .current-page {
                   margin-right: auto;
-                }
-                button {
-                  padding: 8px 16px;
-                  border: none;
-                  border-radius: 4px;
-                  cursor: pointer;
-                  font-size: 14px;
-                  white-space: nowrap;
-                }
-                .current-page {
                   background-color: #f5f5f5;
                   border: 1px solid #ddd;
-                  margin: 0;
                 }
                 .current-page:hover {
                   background-color: #e8e8e8;
@@ -243,16 +275,33 @@ function updateTrayMenu() {
                   background-color: #2196F3;
                   color: white;
                 }
+                button {
+                  padding: 8px 16px;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 14px;
+                  white-space: nowrap;
+                }
               </style>
             </head>
             <body>
               <div class="container">
-                <label for="urlInput">URL (leave blank to reset to default):</label>
-                <input type="url" id="urlInput" value="${currentUrl}" placeholder="https://keep.google.com/u/0/#LIST/..." />
+                <div class="setting-group">
+                  <label for="urlInput">Default URL (leave blank to reset):</label>
+                  <input type="url" id="urlInput" value="${currentUrl}" placeholder="https://keep.google.com/u/0/#LIST/..." />
+                </div>
+                <div class="setting-group">
+                  <label for="timerInput">Automatically un-hide memo after (minutes):</label>
+                  <input type="number" id="timerInput" value="${store.get('reShowTimer', 15)}" min="1" />
+                </div>
                 <div class="button-row">
                   <button class="current-page" onclick="useCurrentPage()">Use Current Page</button>
                   <button class="cancel" onclick="window.electronAPI.cancel()">Cancel</button>
-                  <button class="save" onclick="window.electronAPI.setUrl(document.getElementById('urlInput').value)">Save</button>
+                  <button class="save" onclick="window.electronAPI.saveSettings({
+                    url: document.getElementById('urlInput').value,
+                    timer: document.getElementById('timerInput').value
+                  })">Save</button>
                 </div>
               </div>
               <script>
@@ -278,10 +327,10 @@ function updateTrayMenu() {
           // Set up IPC handlers
           const { ipcMain } = electron;
           
-          // Handler for URL selection
-          ipcMain.once('url-selected', (event, url) => {
-            console.log('URL received via IPC:', url);
-            result = url;
+          // Handler for settings selection
+          ipcMain.once('settings-saved', (event, settings) => {
+            console.log('Settings received via IPC:', settings);
+            result = settings;
             inputWindow.close();
           });
           
@@ -317,14 +366,28 @@ function updateTrayMenu() {
           ipcMain.removeAllListeners('url-dialog-cancelled');
           ipcMain.removeAllListeners('get-current-page-url');
           
-          // If user cancelled or closed the window without selecting a URL
+          // If user cancelled or closed the window without selecting settings
           if (userCancelled || result === null) {
-            console.log('User cancelled or closed the dialog without selecting a URL');
+            console.log('User cancelled or closed the dialog without selecting settings');
             return; // Exit without making changes
           }
           
-          // Process the result
-          if (result.trim() === '') {
+          const { url, timer } = result;
+          
+          // 1. Process Timer
+          if (timer && !isNaN(parseInt(timer))) {
+            const newTimer = parseInt(timer);
+            console.log('Saving re-show timer to store:', newTimer);
+            store.set('reShowTimer', newTimer);
+            
+            // If window is hidden, restart timer to apply new setting
+            if (mainWindow && !mainWindow.isVisible()) {
+              startReShowTimer();
+            }
+          }
+
+          // 2. Process URL
+          if (url.trim() === '') {
             console.log('Resetting URL to default');
             store.delete('keepUrl');
             
@@ -335,34 +398,22 @@ function updateTrayMenu() {
             // Reload the window with the default URL immediately
             console.log('Reloading window with default URL:', defaultUrl);
             mainWindow.loadURL(defaultUrl);
-            
-            electron.dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'URL Reset',
-              message: 'Default URL has been reset and applied.',
-            });
           } else {
             // Basic URL validation
             try {
-              new URL(result); // Check if it's a valid URL format
+              new URL(url); // Check if it's a valid URL format
               
               // Save the URL to the store
-              console.log('Saving URL to store:', result);
-              store.set('keepUrl', result);
+              console.log('Saving URL to store:', url);
+              store.set('keepUrl', url);
               
               // Verify the URL was saved correctly
               const savedUrl = store.get('keepUrl');
               console.log('URL retrieved from store after saving:', savedUrl);
               
               // Reload the window with the new URL immediately
-              console.log('Reloading window with URL:', result);
-              mainWindow.loadURL(result);
-              
-              electron.dialog.showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'URL Saved',
-                message: 'New default URL saved and applied.',
-              });
+              console.log('Reloading window with URL:', url);
+              mainWindow.loadURL(url);
             } catch (e) {
               console.error('Invalid URL:', e);
               electron.dialog.showErrorBox('Invalid URL', 'The URL you entered is not valid. Please try again.');
@@ -409,7 +460,7 @@ electron.app.on('ready', async () => {
   
   if (mainWindow) {
     mainWindow.once('ready-to-show', () => {
-      mainWindow.show(); // Show window at startup
+      mainWindow.showInactive(); // Show window at startup
     });
   }
 });
@@ -420,7 +471,7 @@ electron.app.on('window-all-closed', (e) => {
 });
 
 electron.app.on('activate', () => {
-  if (mainWindow) mainWindow.show();
+  if (mainWindow) mainWindow.showInactive();
 });
 
 const gotTheLock = electron.app.requestSingleInstanceLock();
