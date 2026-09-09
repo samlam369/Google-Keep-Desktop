@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "update-extension": "cd chrome-google-keep-full-screen && git pull origin main && cd ..",
+    "install-extension": "node install-extension.js",
+    "update-extension": "node install-extension.js --remote",
+    "test": "node --test test/extension-install.test.js",
     "postinstall": "node install-extension.js"
   },
   "author": "",

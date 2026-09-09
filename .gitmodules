@@ -1,0 +1,4 @@
+[submodule "chrome-google-keep-full-screen"]
+	path = chrome-google-keep-full-screen
+	url = https://github.com/samlam369/chrome-google-keep-full-screen.git
+	branch = master
