@@ -3,6 +3,15 @@ const path = require('path');
 const fs = require('fs');
 const { ElectronChromeExtensions } = require('electron-chrome-extensions');
 const Store = require('electron-store').default;
+const { Console } = require('node:console');
+
+// The launcher's output pipes may close while the app stays in the tray.
+// Keep diagnostic writes from interrupting window and timer operations.
+const console = new Console({
+  stdout: process.stdout,
+  stderr: process.stderr,
+  ignoreErrors: true,
+});
 
 console.log('Electron version:', process.versions.electron); // Diagnostic log
 
