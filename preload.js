@@ -7,6 +7,29 @@ window.addEventListener('DOMContentLoaded', () => {
     body {
       margin-top: 32px !important;
     }
+
+    /* Keep the note footer on one line. Keep renamed yePe5c to nK2kYb;
+       do not depend on the extension's fullscreen class for this layout. */
+    :is(.IZ65Hb-nK2kYb, .IZ65Hb-yePe5c):has(> [role="toolbar"]) {
+      flex-wrap: nowrap !important;
+    }
+
+    /* The Close button precedes the icons in Keep's reversed flex row. */
+    :is(.IZ65Hb-nK2kYb, .IZ65Hb-yePe5c):has(> [role="toolbar"]) > [role="button"] {
+      flex: 0 0 auto !important;
+      white-space: nowrap !important;
+    }
+
+    /* Reserve Close's width, clipping icons only when space runs out. */
+    :is(.IZ65Hb-nK2kYb, .IZ65Hb-yePe5c) > [role="toolbar"] {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      flex-wrap: nowrap !important;
+    }
+
+    :is(.IZ65Hb-nK2kYb, .IZ65Hb-yePe5c) > [role="toolbar"] > [role="button"] {
+      flex-shrink: 0 !important;
+    }
   `;
   document.head.appendChild(bodyStyle);
 

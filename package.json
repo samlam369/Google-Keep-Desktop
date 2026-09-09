@@ -7,7 +7,8 @@
     "start": "electron .",
     "install-extension": "node install-extension.js",
     "update-extension": "node install-extension.js --remote",
-    "test": "node --test test/extension-install.test.js",
+    "test": "node --test test/*.test.js",
+    "test:render": "electron test/note-fullscreen.electron.cjs",
     "postinstall": "node install-extension.js"
   },
   "author": "",
