@@ -19,14 +19,71 @@ let extensions;
 const DEFAULT_WINDOW_WIDTH = 300;
 const DEFAULT_WINDOW_HEIGHT = 500; // Swapped to DEFAULT_ prefix for clarity
 
+function getSafeBounds(bounds) {
+  const displays = electron.screen.getAllDisplays();
+  const primaryDisplay = electron.screen.getPrimaryDisplay();
+  const width = bounds && bounds.width ? bounds.width : DEFAULT_WINDOW_WIDTH;
+  const height = bounds && bounds.height ? bounds.height : DEFAULT_WINDOW_HEIGHT;
+
+  const defaultBounds = {
+    width,
+    height,
+    x: primaryDisplay.workArea.x + primaryDisplay.workArea.width - width - 20,
+    y: primaryDisplay.workArea.y + 40,
+  };
+
+  if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number') {
+    return defaultBounds;
+  }
+
+  const isVisibleOnAnyDisplay = displays.some((display) => {
+    const area = display.workArea;
+    const overlapX = Math.max(0, Math.min(bounds.x + bounds.width, area.x + area.width) - Math.max(bounds.x, area.x));
+    const overlapY = Math.max(0, Math.min(bounds.y + bounds.height, area.y + area.height) - Math.max(bounds.y, area.y));
+    return overlapX >= 50 && overlapY >= 50;
+  });
+
+  if (!isVisibleOnAnyDisplay) {
+    console.log('Saved bounds outside visible displays, resetting to safe bounds:', defaultBounds);
+    return defaultBounds;
+  }
+
+  return {
+    width,
+    height,
+    x: bounds.x,
+    y: bounds.y,
+  };
+}
+
+function resetWindowPosition() {
+  if (!mainWindow) return;
+  const primaryDisplay = electron.screen.getPrimaryDisplay();
+  const currentBounds = mainWindow.getBounds();
+  const width = currentBounds.width || DEFAULT_WINDOW_WIDTH;
+  const height = currentBounds.height || DEFAULT_WINDOW_HEIGHT;
+  const safeBounds = {
+    width,
+    height,
+    x: primaryDisplay.workArea.x + primaryDisplay.workArea.width - width - 20,
+    y: primaryDisplay.workArea.y + 40,
+  };
+  mainWindow.setBounds(safeBounds);
+  store.set('windowBounds', safeBounds);
+  mainWindow.showInactive();
+  updateTrayMenu();
+}
+
+
 function createWindow() {
   // Load persisted window bounds
   const savedBounds = store.get('windowBounds', {});
+  const bounds = getSafeBounds(savedBounds);
   mainWindow = new electron.BrowserWindow({
-    width: savedBounds.width || DEFAULT_WINDOW_WIDTH,
-    height: savedBounds.height || DEFAULT_WINDOW_HEIGHT,
-    x: typeof savedBounds.x === 'number' ? savedBounds.x : undefined,
-    y: typeof savedBounds.y === 'number' ? savedBounds.y : undefined,
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
     minWidth: 200,
     minHeight: 300,
     resizable: true,
@@ -115,6 +172,12 @@ function toggleWindow() {
     mainWindow.hide();
     startReShowTimer();
   } else {
+    const currentBounds = mainWindow.getBounds();
+    const safeBounds = getSafeBounds(currentBounds);
+    if (safeBounds.x !== currentBounds.x || safeBounds.y !== currentBounds.y) {
+      mainWindow.setBounds(safeBounds);
+      store.set('windowBounds', safeBounds);
+    }
     mainWindow.showInactive();
     if (reShowTimeoutId) {
       clearTimeout(reShowTimeoutId);
@@ -155,6 +218,12 @@ function updateTrayMenu() {
         updateTrayMenu();
       },
     }] : []),
+    {
+      label: 'Reset Position',
+      click: () => {
+        resetWindowPosition();
+      },
+    },
     {
       label: 'Always on Top',
       type: 'checkbox',
